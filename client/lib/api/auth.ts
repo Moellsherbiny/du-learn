@@ -3,6 +3,7 @@ import { apiRequest } from "./client";
 export type LoginInput = {
   email: string;
   password: string;
+  turnstile_token: string
 };
 
 export type RegisterInput = {
@@ -11,6 +12,7 @@ export type RegisterInput = {
   email: string;
   password1: string;
   password2: string;
+  turnstile_token:string;
 };
 
 export type User = {
@@ -105,12 +107,14 @@ export async function resendVerificationOtp(
 
 export async function requestPasswordReset(
   email: string,
+  turnstileToken:string
 ) {
   return apiRequest<{ detail: string }>({
     path: "/api/auth/password-reset/request/",
     method: "POST",
     body: JSON.stringify({
       email,
+      turnstile_token:turnstileToken
     }),
   });
 }

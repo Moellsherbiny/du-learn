@@ -388,3 +388,89 @@ class AssessmentAttemptSerializer(serializers.ModelSerializer):
             "updated_at",
             "answers",
         ]
+
+
+# =========================================================
+# Student Choice
+# =========================================================
+
+class StudentChoiceSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = Choice
+
+        fields = [
+            "id",
+            "text",
+            "order",
+        ]
+
+
+# =========================================================
+# Student Question
+# =========================================================
+
+class StudentQuestionSerializer(
+    serializers.ModelSerializer
+):
+    choices = StudentChoiceSerializer(
+        many=True,
+        read_only=True,
+    )
+
+    class Meta:
+        model = Question
+
+        fields = [
+            "id",
+            "text",
+            "type",
+            "points",
+            "order",
+            "choices",
+        ]
+
+        read_only_fields = [
+            "id",
+            "choices",
+        ]
+
+
+# =========================================================
+# Student Assessment
+# =========================================================
+
+class StudentAssessmentSerializer(
+    serializers.ModelSerializer
+):
+    questions = StudentQuestionSerializer(
+        many=True,
+        read_only=True,
+    )
+
+    class Meta:
+        model = Assessment
+
+        fields = [
+            "id",
+            "course",
+            "lesson",
+            "title",
+            "description",
+            "type",
+            "time_limit_minutes",
+            "passing_score",
+            "max_attempts",
+            "shuffle_questions",
+            "shuffle_choices",
+            "questions",
+        ]
+
+        read_only_fields = [
+            "id",
+            "course",
+            "lesson",
+            "questions",
+        ]
+

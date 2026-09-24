@@ -1,5 +1,6 @@
-from django.conf import settings
 
+from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
 from allauth.account.utils import user_pk_to_url_str
 from dj_rest_auth.registration.serializers import RegisterSerializer
 from dj_rest_auth.serializers import (
@@ -10,9 +11,9 @@ from dj_rest_auth.serializers import (
 
 from rest_framework import serializers
 
-from .emails import send_verification_otp_email
+from .services.emails import send_verification_otp_email
 from .models import StudentProfile, TeacherProfile, User
-from .otp import generate_otp
+from .services.otp import generate_otp
 
 
 class UserSerializer(UserDetailsSerializer):
@@ -106,10 +107,8 @@ class RegistrationSerializer(RegisterSerializer):
             ]
         )
 
-        # Generate a new OTP.
         otp = generate_otp(user.id)
 
-        # Send OTP to the user's email.
         send_verification_otp_email(
             user=user,
             otp=otp,
@@ -146,22 +145,24 @@ class CustomPasswordResetSerializer(
 
 
 class ProfileUserSerializer(serializers.ModelSerializer):
-    image = serializers.ImageField(
-        required=False,
-        allow_null=True,
-    )
-
     class Meta:
         model = User
 
         fields = (
+            "id",
+            "email",
             "first_name",
             "last_name",
+            "role",
+            "email_verified",
             "image",
-            "phone",
-            "date_of_birth",
-            "city",
-            "country",
+        )
+
+        read_only_fields = (
+            "id",
+            "email",
+            "role",
+            "email_verified",
         )
 
         extra_kwargs = {
@@ -173,6 +174,39 @@ class ProfileUserSerializer(serializers.ModelSerializer):
                 "required": False,
                 "max_length": 150,
             },
+            "image": {
+                "required": False,
+                "allow_null": True,
+            },
+        }
+
+
+class StudentProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentProfile
+
+        fields = (
+            "bio",
+            "phone",
+            "date_of_birth",
+            "school",
+            "grade_level",
+            "city",
+            "country",
+            "created_at",
+            "updated_at",
+        )
+
+        read_only_fields = (
+            "created_at",
+            "updated_at",
+        )
+
+        extra_kwargs = {
+            "bio": {
+                "required": False,
+                "allow_blank": True,
+            },
             "phone": {
                 "required": False,
                 "allow_blank": True,
@@ -181,6 +215,16 @@ class ProfileUserSerializer(serializers.ModelSerializer):
             "date_of_birth": {
                 "required": False,
                 "allow_null": True,
+            },
+            "school": {
+                "required": False,
+                "allow_blank": True,
+                "max_length": 255,
+            },
+            "grade_level": {
+                "required": False,
+                "allow_blank": True,
+                "max_length": 100,
             },
             "city": {
                 "required": False,
@@ -194,39 +238,6 @@ class ProfileUserSerializer(serializers.ModelSerializer):
             },
         }
 
-class StudentProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = StudentProfile
-
-        fields = (
-            "bio",
-            "school",
-            "grade_level",
-            "created_at",
-            "updated_at",
-        )
-
-        read_only_fields = (
-            "created_at",
-            "updated_at",
-        )
-
-        extra_kwargs = {
-            "bio": {
-                "required": False,
-                "allow_blank": True,
-            },
-            "school": {
-                "required": False,
-                "allow_blank": True,
-                "max_length": 255,
-            },
-            "grade_level": {
-                "required": False,
-                "allow_blank": True,
-                "max_length": 100,
-            },
-        }
 
 class TeacherProfileSerializer(serializers.ModelSerializer):
     class Meta:
@@ -234,9 +245,12 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
 
         fields = (
             "bio",
+            "phone",
             "specialization",
             "qualification",
             "years_of_experience",
+            "city",
+            "country",
             "created_at",
             "updated_at",
         )
@@ -250,6 +264,11 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
             "bio": {
                 "required": False,
                 "allow_blank": True,
+            },
+            "phone": {
+                "required": False,
+                "allow_blank": True,
+                "max_length": 30,
             },
             "specialization": {
                 "required": False,
@@ -266,4 +285,94 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
                 "min_value": 0,
                 "max_value": 60,
             },
+            "city": {
+                "required": False,
+                "allow_blank": True,
+                "max_length": 100,
+            },
+            "country": {
+                "required": False,
+                "allow_blank": True,
+                "max_length": 100,
+            },
         }
+
+
+
+
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        trim_whitespace=False,
+    )
+
+    new_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        trim_whitespace=False,
+    )
+
+    confirm_password = serializers.CharField(
+        required=True,
+        write_only=True,
+        trim_whitespace=False,
+    )
+
+    def validate_current_password(self, value):
+        user = self.context["request"].user
+
+        if not user.check_password(value):
+            raise serializers.ValidationError(
+                "كلمة المرور الحالية غير صحيحة."
+            )
+
+        return value
+
+    def validate(self, attrs):
+        new_password = attrs.get(
+            "new_password"
+        )
+        confirm_password = attrs.get(
+            "confirm_password"
+        )
+
+        if new_password != confirm_password:
+            raise serializers.ValidationError(
+                {
+                    "confirm_password": [
+                        "كلمتا المرور غير متطابقتين."
+                    ]
+                }
+            )
+
+        user = self.context["request"].user
+
+        if user.check_password(new_password):
+            raise serializers.ValidationError(
+                {
+                    "new_password": [
+                        "كلمة المرور الجديدة يجب أن تختلف عن كلمة المرور الحالية."
+                    ]
+                }
+            )
+
+        validate_password(
+            new_password,
+            user=user,
+        )
+
+        return attrs
+
+
+class PasswordResetVerifySerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+
+    otp = serializers.CharField(
+        required=True,
+        max_length=6,
+        min_length=6,
+        trim_whitespace=True,
+    )

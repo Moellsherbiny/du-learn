@@ -14,15 +14,15 @@ export type LoginActionState = {
 export async function loginAction(
   formData: FormData,
 ): Promise<LoginActionState> {
-  const email = String(
-    formData.get("email") ?? "",
-  )
+  const email = String(formData.get("email") ?? "")
     .trim()
     .toLowerCase();
 
-  const password = String(
-    formData.get("password") ?? "",
-  );
+  const password = String(formData.get("password") ?? "");
+
+  const turnstileToken = String(
+    formData.get("turnstile_token") ?? "",
+  ).trim();
 
   if (!email) {
     return {
@@ -42,10 +42,22 @@ export async function loginAction(
     };
   }
 
+  if (!turnstileToken) {
+    return {
+      success: false,
+      errors: {
+        non_field_errors: [
+          "يرجى إكمال التحقق الأمني.",
+        ],
+      },
+    };
+  }
+
   try {
     const result = await login({
       email,
       password,
+      turnstile_token: turnstileToken,
     });
 
     if (!result.access) {
@@ -61,32 +73,22 @@ export async function loginAction(
 
     const cookieStore = await cookies();
 
-    cookieStore.set(
-      "access_token",
-      result.access,
-      {
-        httpOnly: true,
-        secure:
-          process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 15,
-      },
-    );
+    cookieStore.set("access_token", result.access, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 15,
+    });
 
     if (result.refresh) {
-      cookieStore.set(
-        "refresh_token",
-        result.refresh,
-        {
-          httpOnly: true,
-          secure:
-            process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          path: "/",
-          maxAge: 60 * 60 * 24 * 7,
-        },
-      );
+      cookieStore.set("refresh_token", result.refresh, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
     }
 
     return {
@@ -118,9 +120,7 @@ function normalizeErrors(
   return Object.fromEntries(
     Object.entries(data).map(([field, value]) => [
       field,
-      Array.isArray(value)
-        ? value
-        : [value],
+      Array.isArray(value) ? value : [value],
     ]),
   );
 }

@@ -27,7 +27,7 @@ export function ModeToggle() {
           <Button
             variant="outline"
             size="icon"
-            className="size-9 rounded-lg"
+            className="size-9 rounded-lg cursor-pointer"
           />
         }
       >

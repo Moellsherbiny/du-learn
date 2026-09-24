@@ -9,15 +9,20 @@ OTP_EXPIRY_SECONDS = 10 * 60
 OTP_COOLDOWN_SECONDS = 60
 OTP_MAX_ATTEMPTS = 5
 
-OTP_CACHE_PREFIX = "email_verification_otp"
+OTP_PREFIX = "otp"
 
 
-def _get_cache_key(user_id):
-    return f"{OTP_CACHE_PREFIX}:{user_id}"
+class OTPPurpose:
+    EMAIL_VERIFICATION = "email_verification"
+    PASSWORD_RESET = "password_reset"
 
 
-def _get_cooldown_key(user_id):
-    return f"{_get_cache_key(user_id)}:cooldown"
+def _get_cache_key(user_id, purpose):
+    return f"{OTP_PREFIX}:{purpose}:{user_id}"
+
+
+def _get_cooldown_key(user_id, purpose):
+    return f"{_get_cache_key(user_id, purpose)}:cooldown"
 
 
 def _hash_otp(otp):
@@ -26,9 +31,9 @@ def _hash_otp(otp):
     ).hexdigest()
 
 
-def generate_otp(user_id):
+def generate_otp(user_id, purpose=OTPPurpose.EMAIL_VERIFICATION):
     """
-    Generate a new email verification OTP.
+    Generate a new OTP.
 
     Returns:
         str: Plain OTP to send by email.
@@ -37,7 +42,7 @@ def generate_otp(user_id):
         ValueError: If cooldown is active.
     """
 
-    if not can_request_new_otp(user_id):
+    if not can_request_new_otp(user_id, purpose):
         raise ValueError(
             "يمكنك طلب رمز جديد بعد قليل."
         )
@@ -48,7 +53,7 @@ def generate_otp(user_id):
     )
 
     cache.set(
-        _get_cache_key(user_id),
+        _get_cache_key(user_id, purpose),
         {
             "hash": _hash_otp(otp),
             "attempts": 0,
@@ -57,7 +62,7 @@ def generate_otp(user_id):
     )
 
     cache.set(
-        _get_cooldown_key(user_id),
+        _get_cooldown_key(user_id, purpose),
         True,
         timeout=OTP_COOLDOWN_SECONDS,
     )
@@ -65,15 +70,23 @@ def generate_otp(user_id):
     return otp
 
 
-def verify_otp(user_id, otp):
+def verify_otp(
+    user_id,
+    otp,
+    purpose=OTPPurpose.EMAIL_VERIFICATION,
+):
     """
-    Verify the OTP.
+    Verify an OTP.
 
     Returns:
         tuple[bool, str]
     """
 
-    cache_key = _get_cache_key(user_id)
+    cache_key = _get_cache_key(
+        user_id,
+        purpose,
+    )
+
     data = cache.get(cache_key)
 
     if not data:
@@ -134,21 +147,36 @@ def verify_otp(user_id, otp):
 
     return (
         True,
-        "تم تأكيد البريد الإلكتروني بنجاح.",
+        "تم التحقق من الرمز بنجاح.",
     )
 
 
-def can_request_new_otp(user_id):
+def can_request_new_otp(
+    user_id,
+    purpose=OTPPurpose.EMAIL_VERIFICATION,
+):
     return not cache.get(
-        _get_cooldown_key(user_id)
+        _get_cooldown_key(
+            user_id,
+            purpose,
+        )
     )
 
 
-def clear_otp(user_id):
+def clear_otp(
+    user_id,
+    purpose=OTPPurpose.EMAIL_VERIFICATION,
+):
     cache.delete(
-        _get_cache_key(user_id)
+        _get_cache_key(
+            user_id,
+            purpose,
+        )
     )
 
     cache.delete(
-        _get_cooldown_key(user_id)
+        _get_cooldown_key(
+            user_id,
+            purpose,
+        )
     )

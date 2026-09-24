@@ -14,6 +14,7 @@ from ..serializers import (
     AssessmentCreateSerializer,
     AssessmentDetailSerializer,
     AssessmentListSerializer,
+    StudentAssessmentSerializer,
 )
 
 
@@ -31,6 +32,9 @@ class AssessmentViewSet(viewsets.ModelViewSet):
     Student:
         - View published assessments only
         - Only assessments from enrolled courses
+
+    Admin:
+        - Full access
     """
 
     permission_classes = [
@@ -54,6 +58,7 @@ class AssessmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        
 
         queryset = (
             Assessment.objects
@@ -93,6 +98,10 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         elif user.role == "ADMIN":
             pass
 
+        # -----------------------------------------------------
+        # Unknown role
+        # -----------------------------------------------------
+
         else:
             queryset = queryset.none()
 
@@ -103,9 +112,15 @@ class AssessmentViewSet(viewsets.ModelViewSet):
     # =========================================================
 
     def get_serializer_class(self):
+        # Student retrieving an assessment
+        # must NOT receive correct answers.
         if self.action == "retrieve":
+            if self.request.user.role == "STUDENT":
+                return StudentAssessmentSerializer
+
             return AssessmentDetailSerializer
 
+        # Teacher/Admin create/update
         if self.action in [
             "create",
             "update",
@@ -113,6 +128,7 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         ]:
             return AssessmentCreateSerializer
 
+        # List
         return AssessmentListSerializer
 
     # =========================================================
@@ -149,28 +165,9 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         """
         Create an assessment.
 
-        The course is expected from the nested URL:
+        Expected URL:
 
-            /courses/{course_pk}/assessments/
-
-        Example:
-
-            POST /courses/COURSE_ID/assessments/
-
-        Body:
-
-        {
-            "title": "HTML Basics Quiz",
-            "description": "Test your HTML knowledge",
-            "type": "QUIZ",
-            "lesson": null,
-            "time_limit_minutes": 20,
-            "passing_score": 60,
-            "max_attempts": 3,
-            "shuffle_questions": true,
-            "shuffle_choices": true,
-            "is_published": false
-        }
+            POST /courses/{course_pk}/assessments/
         """
 
         course_id = (
@@ -181,9 +178,7 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         if not course_id:
             return Response(
                 {
-                    "detail": (
-                        "Course is required."
-                    )
+                    "detail": "Course is required."
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -210,12 +205,10 @@ class AssessmentViewSet(viewsets.ModelViewSet):
 
         if (
             request.user.role == "TEACHER"
-            and course.teacher_id
-            != request.user.id
+            and course.teacher_id != request.user.id
         ):
             raise PermissionDenied(
-                "You can only create assessments "
-                "for your own courses."
+                "You can only create assessments for your own courses."
             )
 
         serializer = self.get_serializer(
@@ -231,18 +224,19 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         )
 
         with transaction.atomic():
-
             assessment = serializer.save(
                 course=course,
             )
 
-        output_serializer = (
-            AssessmentDetailSerializer(
-                assessment,
-                context={
-                    "request": request,
-                },
-            )
+        # -----------------------------------------------------
+        # Return detail response
+        # -----------------------------------------------------
+
+        output_serializer = AssessmentDetailSerializer(
+            assessment,
+            context={
+                "request": request,
+            },
         )
 
         headers = self.get_success_headers(
@@ -268,7 +262,7 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         """
         Update an assessment.
 
-        Course cannot be changed through this endpoint.
+        Course cannot be changed after creation.
         """
 
         assessment = self.get_object()
@@ -289,7 +283,7 @@ class AssessmentViewSet(viewsets.ModelViewSet):
             )
 
         # -----------------------------------------------------
-        # Validate lesson belongs to same course
+        # Validate serializer
         # -----------------------------------------------------
 
         serializer = self.get_serializer(
@@ -312,13 +306,18 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             assessment = serializer.save()
 
+        # -----------------------------------------------------
+        # Return updated assessment
+        # -----------------------------------------------------
+
         return Response(
             AssessmentDetailSerializer(
                 assessment,
                 context={
                     "request": request,
                 },
-            ).data
+            ).data,
+            status=status.HTTP_200_OK,
         )
 
     # =========================================================
@@ -349,6 +348,13 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         *args,
         **kwargs,
     ):
+        """
+        Delete an assessment.
+
+        Assessment cannot be deleted once students
+        have started attempts.
+        """
+
         assessment = self.get_object()
 
         # -----------------------------------------------------
@@ -410,7 +416,7 @@ class AssessmentViewSet(viewsets.ModelViewSet):
             )
 
         # -----------------------------------------------------
-        # Publish
+        # Already published
         # -----------------------------------------------------
 
         if assessment.is_published:
@@ -422,6 +428,10 @@ class AssessmentViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # -----------------------------------------------------
+        # Publish
+        # -----------------------------------------------------
 
         assessment.is_published = True
 
@@ -462,6 +472,10 @@ class AssessmentViewSet(viewsets.ModelViewSet):
 
         assessment = self.get_object()
 
+        # -----------------------------------------------------
+        # Already unpublished
+        # -----------------------------------------------------
+
         if not assessment.is_published:
             return Response(
                 {
@@ -471,6 +485,10 @@ class AssessmentViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # -----------------------------------------------------
+        # Unpublish
+        # -----------------------------------------------------
 
         assessment.is_published = False
 
@@ -490,3 +508,4 @@ class AssessmentViewSet(viewsets.ModelViewSet):
             ).data,
             status=status.HTTP_200_OK,
         )
+

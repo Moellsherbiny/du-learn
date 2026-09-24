@@ -1,16 +1,68 @@
+
 from rest_framework import status, viewsets
-from rest_framework.exceptions import NotFound,PermissionDenied
-from rest_framework.filters import OrderingFilter,SearchFilter
+from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from apps.assessments.models import Assessment,Question
+
+from apps.assessments.models import Assessment, Question
+
 from ..permissions import QuestionPermission
-from ..serializers import QuestionCreateSerializer, QuestionListSerializer
-   
+from ..serializers import (
+    QuestionCreateSerializer,
+    QuestionListSerializer,
+    StudentQuestionSerializer,
+)
+
+
 class QuestionViewSet(viewsets.ModelViewSet):
+    """
+    Nested Question API.
+
+    URLs:
+
+        GET
+        /courses/{course_pk}/assessments/{assessment_pk}/questions/
+
+        POST
+        /courses/{course_pk}/assessments/{assessment_pk}/questions/
+
+        GET
+        /courses/{course_pk}/assessments/{assessment_pk}/questions/{pk}/
+
+        PUT / PATCH
+        /courses/{course_pk}/assessments/{assessment_pk}/questions/{pk}/
+
+        DELETE
+        /courses/{course_pk}/assessments/{assessment_pk}/questions/{pk}/
+
+
+    Student:
+        - Can view questions of accessible assessments.
+        - Cannot see correct answers.
+        - Cannot create/update/delete questions.
+
+    Teacher:
+        - Can create/update/delete questions
+          for assessments belonging to their courses.
+
+    Admin:
+        - Full access.
+    """
+
     permission_classes = [
         IsAuthenticated,
         QuestionPermission,
+    ]
+
+    http_method_names = [
+        "get",
+        "post",
+        "put",
+        "patch",
+        "delete",
+        "head",
+        "options",
     ]
 
     filter_backends = [
@@ -33,6 +85,10 @@ class QuestionViewSet(viewsets.ModelViewSet):
         "id",
     ]
 
+    # =========================================================
+    # Assessment
+    # =========================================================
+
     def get_assessment(self):
         try:
             return (
@@ -45,10 +101,15 @@ class QuestionViewSet(viewsets.ModelViewSet):
                     pk=self.kwargs["assessment_pk"],
                 )
             )
+
         except Assessment.DoesNotExist:
             raise NotFound(
                 "Assessment does not exist."
             )
+
+    # =========================================================
+    # Queryset
+    # =========================================================
 
     def get_queryset(self):
         assessment = self.get_assessment()
@@ -61,9 +122,21 @@ class QuestionViewSet(viewsets.ModelViewSet):
             .prefetch_related(
                 "choices",
             )
+            .order_by(
+                "order",
+                "id",
+            )
         )
 
+    # =========================================================
+    # Serializer
+    # =========================================================
+
     def get_serializer_class(self):
+        # -----------------------------------------------------
+        # Create / Update
+        # -----------------------------------------------------
+
         if self.action in [
             "create",
             "update",
@@ -71,14 +144,37 @@ class QuestionViewSet(viewsets.ModelViewSet):
         ]:
             return QuestionCreateSerializer
 
+        # -----------------------------------------------------
+        # Student read
+        # -----------------------------------------------------
+
+        if self.request.user.role == "STUDENT":
+            return StudentQuestionSerializer
+
+        # -----------------------------------------------------
+        # Teacher / Admin read
+        # -----------------------------------------------------
+
         return QuestionListSerializer
+
+    # =========================================================
+    # Teacher Permission
+    # =========================================================
 
     def check_teacher_permission(self):
         user = self.request.user
         assessment = self.get_assessment()
 
+        # -----------------------------------------------------
+        # Admin
+        # -----------------------------------------------------
+
         if user.role == "ADMIN":
             return
+
+        # -----------------------------------------------------
+        # Teacher ownership
+        # -----------------------------------------------------
 
         if (
             user.role != "TEACHER"
@@ -88,6 +184,10 @@ class QuestionViewSet(viewsets.ModelViewSet):
                 "You do not have permission to manage "
                 "this assessment."
             )
+
+    # =========================================================
+    # Create
+    # =========================================================
 
     def create(self, request, *args, **kwargs):
         self.check_teacher_permission()
@@ -106,7 +206,11 @@ class QuestionViewSet(viewsets.ModelViewSet):
             assessment=assessment,
         )
 
-        response_serializer = QuestionListSerializer(
+        # -----------------------------------------------------
+        # Return according to user role
+        # -----------------------------------------------------
+
+        response_serializer = self.get_serializer(
             question,
             context=self.get_serializer_context(),
         )
@@ -116,10 +220,18 @@ class QuestionViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    # =========================================================
+    # Update
+    # =========================================================
+
     def perform_update(self, serializer):
         self.check_teacher_permission()
 
         serializer.save()
+
+    # =========================================================
+    # Delete
+    # =========================================================
 
     def perform_destroy(self, instance):
         self.check_teacher_permission()

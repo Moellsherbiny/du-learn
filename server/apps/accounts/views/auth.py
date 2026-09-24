@@ -17,10 +17,12 @@ from dj_rest_auth.serializers import (
     PasswordResetSerializer,
     UserDetailsSerializer,
 )
-
+from apps.security.services.turnstile import (
+    validate_turnstile_request
+)
 from rest_framework import serializers
-from ..otp import generate_otp
-from ..emails import send_verification_otp_email
+from ..services.otp import generate_otp
+from ..services.emails import send_verification_otp_email
 
 
 
@@ -57,6 +59,7 @@ class LoginView(APIView):
     def post(self, request):
         email = request.data.get("email")
         password = request.data.get("password")
+        turnstile_token = request.data.get("turnstile_token")
 
         if not isinstance(email, str) or not email.strip():
             return Response(
@@ -74,6 +77,27 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+
+        if (not isinstance(turnstile_token, str) or not turnstile_token.strip()):
+            return Response(
+                {
+                    "detail":"يرجي إكمال التحقق الأمني"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        
+
+        if not validate_turnstile_request(request, turnstile_token):
+             return Response(
+                {
+                    "detail": (
+                        "فشل التحقق الأمني. "
+                        "يرجى المحاولة مرة أخرى."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         email = email.strip().lower()
 
         user = authenticate(
@@ -181,6 +205,39 @@ class RegistrationSerializer(RegisterSerializer):
         max_length=150,
     )
 
+    turnstile_token = serializers.CharField(
+        required=True,
+        write_only=True,
+        trim_whitespace=True
+    )
+
+    def validate(self, attrs):
+        turnstile_token = attrs.pop(
+            "turnstile_token",
+            ""
+        )
+        request = self.context.get("request")
+
+        if request is None:
+            raise serializers.ValidationError(
+                {
+                     "non_field_errors": [
+                    "تعذر التحقق الأمني."
+                ]
+                }
+            )
+        is_valid = validate_turnstile_request(request, turnstile_token)
+
+        if not is_valid:
+            raise serializers.ValidationError(
+                {
+                    "non_field_errors":[
+                       "فشل التحقق الأمني. يرجى المحاولة مرة أخرى." 
+                    ]
+                }
+            )
+        return super().validate(attrs)
+    
     def get_cleaned_data(self):
         data = super().get_cleaned_data()
 

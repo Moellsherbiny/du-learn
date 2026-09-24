@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
-
 import { logout } from "@/lib/api/auth";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -38,9 +36,8 @@ export function LogoutButton() {
       variant="ghost"
       onClick={handleLogout}
       disabled={isLoading}
-      className="gap-2 text-muted-foreground hover:text-destructive"
+      className="gap-2 text-muted-foreground hover:text-destructive "
     >
-      <LogOut className="size-4" />
 
       <span>
         {isLoading

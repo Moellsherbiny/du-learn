@@ -8,7 +8,7 @@ from .views import EnrollmentViewSet
 router = DefaultRouter()
 
 router.register(
-    r"enrollments",
+    r"",
     EnrollmentViewSet,
     basename="enrollment",
 )

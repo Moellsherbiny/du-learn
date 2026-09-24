@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Separator } from "@/components/ui/separator";
+import { Brand } from "@/components/layout/brand";
 
 export const metadata: Metadata = {
   title: {
@@ -37,26 +38,7 @@ export default function AuthLayout({
         {/* Header */}
         <header className="absolute inset-x-0 top-0 z-20">
           <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-6 lg:px-10">
-            <Link
-              href="/"
-              className="group flex items-center gap-3"
-            >
-              <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-transform duration-200 group-hover:scale-105">
-                <span className="text-lg font-bold">
-                  D
-                </span>
-              </div>
-
-              <div className="leading-none">
-                <span className="block text-base font-bold tracking-tight">
-                  DU Learn
-                </span>
-
-                <span className="mt-1 block text-[11px] text-muted-foreground">
-                  منصة التعلم الذكي
-                </span>
-              </div>
-            </Link>
+            <Brand/>
 
             <Link
               href="/"

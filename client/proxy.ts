@@ -7,9 +7,7 @@ if (!API_URL) {
   throw new Error("API_URL is not configured");
 }
 
-const PROTECTED_ROUTES = [
-  "/learn",
-];
+const PROTECTED_ROUTES = ["/learn"];
 
 const AUTH_ROUTES = [
   "/login",
@@ -36,12 +34,12 @@ async function getCurrentUser(
 ) {
   const accessToken =
     request.cookies.get("access_token")?.value;
+
   console.log(
-  "ACCESS TOKEN:",
-  Boolean(
-    request.cookies.get("access_token")?.value,
-  ),
-);
+    "ACCESS TOKEN:",
+    Boolean(accessToken),
+  );
+
   if (!accessToken) {
     return null;
   }
@@ -74,6 +72,24 @@ export async function proxy(
 ) {
   const { pathname, search } = request.nextUrl;
 
+  /*
+   * --------------------------------------------------
+   * Next.js Server Actions
+   * --------------------------------------------------
+   *
+   * Server Actions use POST requests and can target
+   * routes such as /learn.
+   *
+   * Do not run authentication redirects on them.
+   */
+  const isServerAction =
+    request.method === "POST" &&
+    request.headers.has("next-action");
+
+  if (isServerAction) {
+    return NextResponse.next();
+  }
+
   const isProtectedRoute = matchesRoute(
     pathname,
     PROTECTED_ROUTES,
@@ -91,71 +107,82 @@ export async function proxy(
     );
 
   /*
-   * /verify-email
-   *
-   * الصفحة متاحة للمستخدم سواء كان:
-   * - غير مسجل دخول
-   * - مسجل دخول لكن البريد غير مؤكد
-   *
-   * لذلك لا نضع عليها أي redirect.
+   * --------------------------------------------------
+   * Verify Email
+   * --------------------------------------------------
    */
+
   if (isVerifyEmailRoute) {
     return NextResponse.next();
   }
 
   /*
-
-   * صفحات النظام المحمية
+   * --------------------------------------------------
+   * Protected Routes
+   * --------------------------------------------------
    *
-   * المستخدم لازم:
-   * 1. يكون مسجل دخول
-   * 2. يكون البريد مؤكد
+   * User must:
+   * 1. Be authenticated
+   * 2. Have verified email
    */
-if (isProtectedRoute) {
-  const user = await getCurrentUser(request);
 
-  console.log("PROXY USER:", user);
+  if (isProtectedRoute) {
+    const user = await getCurrentUser(request);
 
-  if (!user) {
-    console.log("PROXY REDIRECT: LOGIN");
+    console.log("PROXY USER:", user);
 
-    const loginUrl = new URL("/login", request.url);
-    const next = `${pathname}${search}`;
+    if (!user) {
+      console.log("PROXY REDIRECT: LOGIN");
 
-    loginUrl.searchParams.set("next", next);
+      const loginUrl = new URL(
+        "/login",
+        request.url,
+      );
 
-    return NextResponse.redirect(loginUrl);
-  }
+      const next = `${pathname}${search}`;
 
-  console.log(
-    "PROXY EMAIL VERIFIED:",
-    user.email_verified,
-  );
+      loginUrl.searchParams.set(
+        "next",
+        next,
+      );
 
-  if (!user.email_verified) {
-    console.log("PROXY REDIRECT: VERIFY EMAIL");
+      return NextResponse.redirect(loginUrl);
+    }
 
-    const verifyUrl = new URL(
-      VERIFY_EMAIL_ROUTE,
-      request.url,
+    console.log(
+      "PROXY EMAIL VERIFIED:",
+      user.email_verified,
     );
 
-    verifyUrl.searchParams.set(
-      "email",
-      user.email,
-    );
+    if (!user.email_verified) {
+      console.log(
+        "PROXY REDIRECT: VERIFY EMAIL",
+      );
 
-    return NextResponse.redirect(verifyUrl);
+      const verifyUrl = new URL(
+        VERIFY_EMAIL_ROUTE,
+        request.url,
+      );
+
+      verifyUrl.searchParams.set(
+        "email",
+        user.email,
+      );
+
+      return NextResponse.redirect(
+        verifyUrl,
+      );
+    }
+
+    return NextResponse.next();
   }
 
-  return NextResponse.next();
-}
   /*
-   * صفحات الـ Auth
-   *
-   * لو المستخدم غير مسجل:
-   * يسمح له بالدخول.
+   * --------------------------------------------------
+   * Auth Routes
+   * --------------------------------------------------
    */
+
   if (isAuthRoute) {
     const user = await getCurrentUser(request);
 
@@ -164,8 +191,9 @@ if (isProtectedRoute) {
     }
 
     /*
-     * مسجل دخول لكن البريد غير مؤكد
+     * Authenticated but email is not verified
      */
+
     if (!user.email_verified) {
       const verifyUrl = new URL(
         VERIFY_EMAIL_ROUTE,
@@ -183,8 +211,9 @@ if (isProtectedRoute) {
     }
 
     /*
-     * مسجل دخول ومؤكد بالفعل
+     * Authenticated and verified
      */
+
     const next =
       request.nextUrl.searchParams.get(
         "next",

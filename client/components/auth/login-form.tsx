@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useTransition } from "react";
@@ -7,7 +6,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { toast } from "sonner";
-
+import { useAuthStore } from "@/stores/auth-store";
+import { getMeAction } from "@/actions/auth/me";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,27 +18,23 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
+import { TurnstileWidget } from "@/components/security/turnstile-widget";
 import { loginAction } from "@/actions/auth/login";
-import {
-  loginSchema,
-  type LoginFormValues,
-} from "@/lib/validations/auth";
+import { loginSchema, type LoginFormValues } from "@/lib/validations/auth";
 import { useRouter } from "next/navigation";
+import { useTurnstile } from "@/hooks/use-turnstile";
 
 export function LoginForm() {
   const [isPending, startTransition] = useTransition();
-  const router = useRouter()
-  const [showPassword, setShowPassword] =
-    useState(false);
-
+  const router = useRouter();
+  const [showPassword, setShowPassword] = useState(false);
+  const turnstile = useTurnstile();
+  const setUser = useAuthStore((state) => state.setUser);
   const {
     register,
     handleSubmit,
     setError,
-    formState: {
-      errors,
-    },
+    formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -48,12 +44,19 @@ export function LoginForm() {
   });
 
   const onSubmit = (values: LoginFormValues) => {
-    const formData = new FormData();
+  if (!turnstile.isVerified) {
+    toast.error("يرجى إكمال التحقق الأمني.");
+    return;
+  }
 
-    formData.append("email", values.email);
-    formData.append("password", values.password);
+  const formData = new FormData();
 
-    startTransition(async () => {
+  formData.append("email", values.email);
+  formData.append("password", values.password);
+  formData.append("turnstile_token", turnstile.token);
+
+  startTransition(async () => {
+    try {
       const result = await loginAction(formData);
 
       if (!result.success) {
@@ -61,9 +64,7 @@ export function LoginForm() {
 
         let hasFieldError = false;
 
-        for (const [field, messages] of Object.entries(
-          fieldErrors,
-        )) {
+        for (const [field, messages] of Object.entries(fieldErrors)) {
           const message = messages[0];
 
           if (!message) continue;
@@ -73,10 +74,7 @@ export function LoginForm() {
             continue;
           }
 
-          if (
-            field === "email" ||
-            field === "password"
-          ) {
+          if (field === "email" || field === "password") {
             hasFieldError = true;
 
             setError(field, {
@@ -86,41 +84,48 @@ export function LoginForm() {
           }
         }
 
-        // لو مفيش خطأ مرتبط بحقل معين،
-        // نعرض الرسالة العامة في Toast.
-        if (
-          !hasFieldError &&
-          result.message
-        ) {
+        if (!hasFieldError && result.message) {
           toast.error(result.message);
         }
 
         return;
       }
 
+      const auth = await getMeAction();
+
+      if (!auth.authenticated || !auth.user) {
+        toast.error(
+          "تم تسجيل الدخول ولكن تعذر تحميل بيانات المستخدم."
+        );
+        return;
+      }
+
+      setUser(auth.user);
+
       toast.success(
-        result.message ??
-          "تم تسجيل الدخول بنجاح.",
+        result.message ?? "تم تسجيل الدخول بنجاح."
       );
 
-      router.replace("/")
-      // من cookie flow.
-    });
-  };
+      router.replace("/learn");
+    } catch (error) {
+      console.error("LOGIN ERROR:", error);
+
+      toast.error(
+        "حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى."
+      );
+    }
+  });
+};
 
   return (
-    <Card
-      className="border-border/60 shadow-sm"
-      dir="rtl"
-    >
+    <Card className="border-border/60 shadow-sm" dir="rtl">
       <CardHeader className="space-y-2">
         <CardTitle className="text-2xl font-semibold tracking-tight">
           مرحبًا بعودتك
         </CardTitle>
 
         <CardDescription className="leading-6">
-          سجّل دخولك للمتابعة في رحلة التعلم
-          الخاصة بك.
+          سجّل دخولك للمتابعة في رحلة التعلم الخاصة بك.
         </CardDescription>
       </CardHeader>
 
@@ -132,9 +137,7 @@ export function LoginForm() {
         >
           {/* Email */}
           <div className="space-y-2">
-            <Label htmlFor="email">
-              البريد الإلكتروني
-            </Label>
+            <Label htmlFor="email">البريد الإلكتروني</Label>
 
             <Input
               id="email"
@@ -148,10 +151,7 @@ export function LoginForm() {
             />
 
             {errors.email && (
-              <p
-                role="alert"
-                className="text-sm text-destructive"
-              >
+              <p role="alert" className="text-sm text-destructive">
                 {errors.email.message}
               </p>
             )}
@@ -160,9 +160,7 @@ export function LoginForm() {
           {/* Password */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password">
-                كلمة المرور
-              </Label>
+              <Label htmlFor="password">كلمة المرور</Label>
 
               <Link
                 href="/forgot-password"
@@ -176,11 +174,7 @@ export function LoginForm() {
             <div className="relative">
               <Input
                 id="password"
-                type={
-                  showPassword
-                    ? "text"
-                    : "password"
-                }
+                type={showPassword ? "text" : "password"}
                 placeholder="أدخل كلمة المرور"
                 autoComplete="current-password"
                 disabled={isPending}
@@ -192,15 +186,9 @@ export function LoginForm() {
               <button
                 type="button"
                 disabled={isPending}
-                onClick={() =>
-                  setShowPassword(
-                    (current) => !current,
-                  )
-                }
+                onClick={() => setShowPassword((current) => !current)}
                 aria-label={
-                  showPassword
-                    ? "إخفاء كلمة المرور"
-                    : "إظهار كلمة المرور"
+                  showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"
                 }
                 aria-pressed={showPassword}
                 className="absolute left-0 top-0 flex h-full w-11 items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
@@ -214,21 +202,26 @@ export function LoginForm() {
             </div>
 
             {errors.password && (
-              <p
-                role="alert"
-                className="text-sm text-destructive"
-              >
+              <p role="alert" className="text-sm text-destructive">
                 {errors.password.message}
               </p>
             )}
           </div>
 
+          {/* Turnstile */}
+<div className="flex justify-center">
+  <TurnstileWidget
+    onVerify={turnstile.setToken}
+    onExpire={turnstile.reset}
+    onError={turnstile.reset}
+  />
+</div>
+
+
+
+
           {/* Submit */}
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={isPending}
-          >
+          <Button type="submit" className="w-full" disabled={isPending}>
             {isPending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
@@ -242,7 +235,6 @@ export function LoginForm() {
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
           ليس لديك حساب؟{" "}
-
           <Link
             href="/register"
             className="font-medium text-foreground underline underline-offset-4 transition-colors hover:text-primary"

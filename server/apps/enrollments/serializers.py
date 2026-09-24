@@ -1,9 +1,10 @@
-from django.utils import timezone
 
 from rest_framework import serializers
 
-from .models import Enrollment
 from apps.courses.models import Course
+from apps.courses.serializers import CourseListSerializer
+
+from .models import Enrollment
 
 
 class EnrollmentSerializer(serializers.ModelSerializer):
@@ -15,6 +16,8 @@ class EnrollmentSerializer(serializers.ModelSerializer):
         queryset=Course.objects.all(),
     )
 
+    course_details = serializers.SerializerMethodField()
+
     class Meta:
         model = Enrollment
 
@@ -22,6 +25,7 @@ class EnrollmentSerializer(serializers.ModelSerializer):
             "id",
             "student",
             "course",
+            "course_details",
             "status",
             "enrolled_at",
             "expires_at",
@@ -34,12 +38,23 @@ class EnrollmentSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "student",
+            "course_details",
             "enrolled_at",
             "completed_at",
             "suspended_at",
             "cancelled_at",
             "updated_at",
         ]
+
+    def get_course_details(self, obj):
+        return CourseListSerializer(
+            obj.course,
+            context=self.context,
+        ).data
+
+    # ------------------------------------------------------------------
+    # Course validation
+    # ------------------------------------------------------------------
 
     def validate_course(self, course):
         request = self.context.get("request")
@@ -53,19 +68,23 @@ class EnrollmentSerializer(serializers.ModelSerializer):
         if user.role == "ADMIN":
             return course
 
-        # Teachers cannot enroll themselves as students.
+        # Only students can enroll.
         if user.role != "STUDENT":
             raise serializers.ValidationError(
                 "Only students can enroll in courses."
             )
 
-        # Prevent enrolling in private courses.
+        # Students can only enroll in public courses.
         if course.visibility != Course.Visibility.PUBLIC:
             raise serializers.ValidationError(
                 "You cannot enroll in a private course."
             )
 
         return course
+
+    # ------------------------------------------------------------------
+    # Enrollment validation
+    # ------------------------------------------------------------------
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -74,7 +93,6 @@ class EnrollmentSerializer(serializers.ModelSerializer):
             return attrs
 
         user = request.user
-
         course = attrs.get("course")
 
         if (

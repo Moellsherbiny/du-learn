@@ -1,9 +1,5 @@
-import React from 'react'
+import { ProgressClient } from "@/components/progress/progress-client";
 
-function page() {
-  return (
-    <div>page</div>
-  )
+export default function ProgressPage() {
+  return <ProgressClient />;
 }
-
-export default page

@@ -12,7 +12,7 @@ export type AuthUser = {
   image?: string;
 };
 
-type AuthState = {
+export type AuthState = {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;

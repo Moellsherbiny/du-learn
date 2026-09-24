@@ -1,6 +1,7 @@
+
 from django.urls import include, path
 
-from .views.profile import ProfileView
+from .views.settings import ChangePasswordView
 
 from .views.auth import (
     CurrentUserView,
@@ -8,7 +9,13 @@ from .views.auth import (
     LogoutView,
     RefreshTokenView,
 )
-from .views.verification import ResendVerificationOTPView, VerifyEmailView
+from .views.profile import ProfileView
+from .views.verification import (
+    ResendVerificationOTPView,
+    VerifyEmailView,
+)
+from .views.password_reset import( PasswordResetRequestView,PasswordResetConfirmView,  PasswordResetVerifyView)
+
 urlpatterns = [
     # Custom authentication
     path(
@@ -35,6 +42,30 @@ urlpatterns = [
         name="token-refresh",
     ),
 
+    # Profile
+    path(
+        "profile/",
+        ProfileView.as_view(),
+        name="profile",
+    ),
+
+    # Password reset
+path(
+    "password-reset/request/",
+    PasswordResetRequestView.as_view(),
+    name="password-reset-request",
+),
+path(
+    "password-reset/verify/",
+    PasswordResetVerifyView.as_view(),
+    name="password-reset-verify",
+),
+path(
+    "password-reset/confirm/",
+    PasswordResetConfirmView.as_view(),
+    name="password-reset-confirm",
+),
+    path("settings/password/", ChangePasswordView.as_view(), name="change-password"),
     # dj-rest-auth
     path(
         "",
@@ -59,6 +90,4 @@ urlpatterns = [
         ResendVerificationOTPView.as_view(),
         name="resend-verification-otp",
     ),
-
-    path("profile/", ProfileView.as_view() , name="profile")
 ]

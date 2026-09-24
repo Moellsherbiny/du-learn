@@ -33,7 +33,7 @@ urlpatterns = [
     path("api/lessons/", include("apps.lessons.urls")),
     path("api/progress/", include("apps.progress.urls")),
     path("api/enrollments/", include("apps.enrollments.urls")),
-    path("api/assessments/", include("apps.assessments.urls")),
+    path("api/", include("apps.assessments.urls")),
 
      # OpenAPI
     path(

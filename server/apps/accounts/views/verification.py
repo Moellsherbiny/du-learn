@@ -3,8 +3,8 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
-from ..otp import generate_otp, verify_otp
-from ..emails import send_verification_otp_email
+from ..services.otp import generate_otp, verify_otp
+from ..services.emails import send_verification_otp_email
 
 class VerifyEmailView(APIView):
     permission_classes = [AllowAny]

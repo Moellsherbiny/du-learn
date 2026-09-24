@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, BookOpen, LockKeyhole, ShieldCheck } from "lucide-react";
-
 import { getMeAction } from "@/actions/auth/me";
-import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
 export default async function HomePage() {
@@ -14,15 +12,15 @@ export default async function HomePage() {
       {/* Hero */}
       <section className="relative border-b border-border/60">
         {/* Dotted background */}
-       <div
-  aria-hidden="true"
-  className="pointer-events-none absolute inset-0"
-  style={{
-    backgroundImage:
-      "radial-gradient(circle, color-mix(in oklab, var(--primary) 24%, transparent) 1.5px, transparent 1.5px)",
-    backgroundSize: "24px 24px",
-  }}
-/>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, color-mix(in oklab, var(--primary) 24%, transparent) 1.5px, transparent 1.5px)",
+            backgroundSize: "24px 24px",
+          }}
+        />
 
         {/* Soft background glow */}
         <div
@@ -49,7 +47,7 @@ export default async function HomePage() {
               <div className="mt-8 flex flex-wrap gap-3">
                 {authenticated ? (
                   <Link
-                    href="/dashboard"
+                    href="/learn"
                     className={buttonVariants({
                       variant: "default",
                       size: "lg",
@@ -276,7 +274,7 @@ export default async function HomePage() {
 
             <Link
               className={buttonVariants({ variant: "default", size: "lg" })}
-              href={authenticated ? "/dashboard" : "/register"}
+              href={authenticated ? "/learn" : "/register"}
             >
               {authenticated ? "لوحة التعلم" : "إنشاء حساب"}
 

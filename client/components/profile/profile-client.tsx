@@ -1,14 +1,26 @@
+
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  useForm,
+  type FieldErrors,
+} from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+
 import {
   Camera,
+  Check,
   Loader2,
   Mail,
-  MapPin,
-  Phone,
   Save,
-  UserRound,
+  User,
 } from "lucide-react";
 
 import {
@@ -16,342 +28,441 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar";
+
 import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
+
 import { Input } from "@/components/ui/input";
+
 import { Label } from "@/components/ui/label";
+
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "sonner";
 
-import { apiRequest } from "@/lib/api/client";
-import { useAuthStore } from "@/stores/auth-store";
+import {
+  updateProfile,
+  type ProfileData,
+} from "@/actions/profile/profile-actions";
 
-type ProfileUser = {
-  first_name: string;
-  last_name: string;
-  image: string | null;
-  phone: string;
-  date_of_birth: string | null;
-  city: string;
-  country: string;
+const profileSchema = z.object({
+  first_name: z
+    .string()
+    .trim()
+    .min(1, "الاسم الأول مطلوب.")
+    .max(
+      150,
+      "الاسم الأول طويل جدًا.",
+    ),
+
+  last_name: z
+    .string()
+    .trim()
+    .min(1, "اسم العائلة مطلوب.")
+    .max(
+      150,
+      "اسم العائلة طويل جدًا.",
+    ),
+
+  phone: z
+    .string()
+    .trim()
+    .max(
+      30,
+      "رقم الهاتف طويل جدًا.",
+    ),
+
+  date_of_birth: z
+    .string()
+    .optional(),
+
+  school: z
+    .string()
+    .trim()
+    .max(
+      255,
+      "اسم المدرسة طويل جدًا.",
+    ),
+
+  grade_level: z
+    .string()
+    .trim()
+    .max(
+      100,
+      "الصف الدراسي طويل جدًا.",
+    ),
+
+  specialization: z
+    .string()
+    .trim()
+    .max(
+      255,
+      "التخصص طويل جدًا.",
+    ),
+
+  qualification: z
+    .string()
+    .trim()
+    .max(
+      255,
+      "المؤهل طويل جدًا.",
+    ),
+
+  years_of_experience: z
+    .string()
+    .optional(),
+
+  city: z
+    .string()
+    .trim()
+    .max(
+      100,
+      "اسم المدينة طويل جدًا.",
+    ),
+
+  country: z
+    .string()
+    .trim()
+    .max(
+      100,
+      "اسم الدولة طويل جدًا.",
+    ),
+
+  bio: z
+    .string()
+    .trim()
+    .max(
+      1000,
+      "النبذة طويلة جدًا.",
+    ),
+});
+
+type ProfileFormValues =
+  z.infer<typeof profileSchema>;
+
+type ProfileClientProps = {
+  initialProfile: ProfileData | null;
+  initialError?: string;
 };
 
-type StudentProfile = {
-  bio: string;
-  school: string;
-  grade_level: string;
-};
-
-type ProfileResponse = {
-  user: ProfileUser;
-  profile: StudentProfile;
-};
-
-type ProfileForm = {
-  first_name: string;
-  last_name: string;
-  phone: string;
-  date_of_birth: string;
-  city: string;
-  country: string;
-  bio: string;
-  school: string;
-  grade_level: string;
-};
-
-const EMPTY_FORM: ProfileForm = {
-  first_name: "",
-  last_name: "",
-  phone: "",
-  date_of_birth: "",
-  city: "",
-  country: "",
-  bio: "",
-  school: "",
-  grade_level: "",
-};
-
-export function ProfileClient() {
-  const authUser = useAuthStore((state) => state.user);
-  const setUser = useAuthStore((state) => state.setUser);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
+export function ProfileClient({
+  initialProfile,
+  initialError,
+}: ProfileClientProps) {
   const [profile, setProfile] =
-    useState<ProfileResponse | null>(null);
+    useState<ProfileData | null>(
+      initialProfile,
+    );
 
-  const [form, setForm] =
-    useState<ProfileForm>(EMPTY_FORM);
+  const [isSaving, setIsSaving] =
+    useState(false);
+
+  const [saveSuccess, setSaveSuccess] =
+    useState(false);
+
+  const [error, setError] =
+    useState<string | null>(
+      initialError ?? null,
+    );
 
   const [imagePreview, setImagePreview] =
     useState<string | null>(
-      authUser?.image ?? null,
+      initialProfile?.image ?? null,
     );
 
   const [imageFile, setImageFile] =
     useState<File | null>(null);
 
-  const [isLoading, setIsLoading] =
-    useState(true);
+  const fileInputRef =
+    useRef<HTMLInputElement>(null);
 
-  const [isSaving, setIsSaving] =
-    useState(false);
+  const role = profile?.role;
+
+  const isStudent =
+    role === "STUDENT";
+
+  const isTeacher =
+    role === "TEACHER";
+
+  const currentProfile =
+    profile?.profile;
+
+  const defaultValues =
+    useMemo<ProfileFormValues>(() => {
+      const studentProfile =
+        isStudent &&
+        currentProfile
+          ? currentProfile
+          : null;
+
+      const teacherProfile =
+        isTeacher &&
+        currentProfile
+          ? currentProfile
+          : null;
+
+      return {
+        first_name:
+          profile?.first_name ?? "",
+
+        last_name:
+          profile?.last_name ?? "",
+
+        phone:
+          currentProfile?.phone ?? "",
+
+        date_of_birth:
+          studentProfile &&
+          "date_of_birth" in
+            studentProfile
+            ? studentProfile.date_of_birth ??
+              ""
+            : "",
+
+        school:
+          studentProfile &&
+          "school" in studentProfile
+            ? studentProfile.school ?? ""
+            : "",
+
+        grade_level:
+          studentProfile &&
+          "grade_level" in studentProfile
+            ? studentProfile.grade_level ??
+              ""
+            : "",
+
+        specialization:
+          teacherProfile &&
+          "specialization" in
+            teacherProfile
+            ? teacherProfile.specialization ??
+              ""
+            : "",
+
+        qualification:
+          teacherProfile &&
+          "qualification" in
+            teacherProfile
+            ? teacherProfile.qualification ??
+              ""
+            : "",
+
+        years_of_experience:
+          teacherProfile &&
+          "years_of_experience" in
+            teacherProfile
+            ? String(
+                teacherProfile.years_of_experience ??
+                  0,
+              )
+            : "",
+
+        city:
+          currentProfile?.city ?? "",
+
+        country:
+          currentProfile?.country ?? "",
+
+        bio:
+          currentProfile?.bio ?? "",
+      };
+    }, [
+      profile,
+      currentProfile,
+      isStudent,
+      isTeacher,
+    ]);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: {
+      errors,
+      isDirty,
+    },
+  } = useForm<ProfileFormValues>({
+    resolver: zodResolver(profileSchema),
+    defaultValues,
+  });
 
   useEffect(() => {
-    let mounted = true;
-
-    async function loadProfile() {
-      try {
-        const data =
-          await apiRequest<ProfileResponse>({
-            path: "/api/auth/profile/",
-            method: "GET",
-          });
-
-        if (!mounted) return;
-
-        setProfile(data);
-
-        setForm({
-          first_name: data.user.first_name ?? "",
-          last_name: data.user.last_name ?? "",
-          phone: data.user.phone ?? "",
-          date_of_birth:
-            data.user.date_of_birth ?? "",
-          city: data.user.city ?? "",
-          country: data.user.country ?? "",
-          bio: data.profile.bio ?? "",
-          school: data.profile.school ?? "",
-          grade_level:
-            data.profile.grade_level ?? "",
-        });
-
-        setImagePreview(
-          data.user.image ?? null,
-        );
-      } catch (error) {
-        if (!mounted) return;
-
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : "فشل تحميل بيانات الملف الشخصي",
-        );
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadProfile();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  function updateField(
-    field: keyof ProfileForm,
-    value: string,
-  ) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  }
+    reset(defaultValues);
+  }, [defaultValues, reset]);
 
   function handleImageChange(
     event: React.ChangeEvent<HTMLInputElement>,
   ) {
-    const file = event.target.files?.[0];
+    const file =
+      event.target.files?.[0];
 
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     if (!file.type.startsWith("image/")) {
-      toast.error("من فضلك اختر صورة صحيحة.");
-      event.target.value = "";
+      setError(
+        "يرجى اختيار ملف صورة صالح.",
+      );
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      toast.error(
-        "حجم الصورة يجب ألا يتجاوز 5MB.",
+      setError(
+        "حجم الصورة يجب ألا يتجاوز 5 ميجابايت.",
       );
-      event.target.value = "";
       return;
     }
 
-    if (imagePreview?.startsWith("blob:")) {
-      URL.revokeObjectURL(imagePreview);
-    }
+    setError(null);
+    setSaveSuccess(false);
+    setImageFile(file);
 
-    const preview =
+    const previewUrl =
       URL.createObjectURL(file);
 
-    setImageFile(file);
-    setImagePreview(preview);
+    setImagePreview(previewUrl);
   }
 
-  async function handleSubmit(
-    event: React.FormEvent<HTMLFormElement>,
+  async function onSubmit(
+    values: ProfileFormValues,
   ) {
-    event.preventDefault();
-
-    if (isSaving) return;
-
     setIsSaving(true);
+    setError(null);
+    setSaveSuccess(false);
 
     try {
-      const body = new FormData();
+      const formData = new FormData();
 
-      body.append(
+      formData.append(
         "first_name",
-        form.first_name.trim(),
+        values.first_name,
       );
 
-      body.append(
+      formData.append(
         "last_name",
-        form.last_name.trim(),
+        values.last_name,
       );
 
-      body.append(
+      formData.append(
         "phone",
-        form.phone.trim(),
+        values.phone,
       );
 
-      /*
-       * Don't send an invalid empty date value.
-       */
-      if (form.date_of_birth) {
-        body.append(
+      formData.append(
+        "city",
+        values.city,
+      );
+
+      formData.append(
+        "country",
+        values.country,
+      );
+
+      formData.append(
+        "bio",
+        values.bio,
+      );
+
+      if (isStudent) {
+        formData.append(
           "date_of_birth",
-          form.date_of_birth,
+          values.date_of_birth ?? "",
+        );
+
+        formData.append(
+          "school",
+          values.school,
+        );
+
+        formData.append(
+          "grade_level",
+          values.grade_level,
         );
       }
 
-      body.append(
-        "city",
-        form.city.trim(),
-      );
+      if (isTeacher) {
+        formData.append(
+          "specialization",
+          values.specialization,
+        );
 
-      body.append(
-        "country",
-        form.country.trim(),
-      );
+        formData.append(
+          "qualification",
+          values.qualification,
+        );
 
-      body.append(
-        "bio",
-        form.bio.trim(),
-      );
-
-      body.append(
-        "school",
-        form.school.trim(),
-      );
-
-      body.append(
-        "grade_level",
-        form.grade_level.trim(),
-      );
+        formData.append(
+          "years_of_experience",
+          values.years_of_experience ||
+            "0",
+        );
+      }
 
       if (imageFile) {
-        body.append(
+        formData.append(
           "image",
           imageFile,
         );
       }
 
-      const data =
-        await apiRequest<ProfileResponse>({
-          path: "/api/auth/profile/",
-          method: "PATCH",
-          body,
-        });
+      const result =
+        await updateProfile(formData);
 
-      setProfile(data);
+      if (!result.success) {
+        setError(
+          result.error ??
+            "تعذر تحديث الملف الشخصي.",
+        );
 
-      setForm({
-        first_name:
-          data.user.first_name ?? "",
-        last_name:
-          data.user.last_name ?? "",
-        phone: data.user.phone ?? "",
-        date_of_birth:
-          data.user.date_of_birth ?? "",
-        city: data.user.city ?? "",
-        country: data.user.country ?? "",
-        bio: data.profile.bio ?? "",
-        school: data.profile.school ?? "",
-        grade_level:
-          data.profile.grade_level ?? "",
-      });
+        return;
+      }
+
+      if (result.data) {
+        setProfile(result.data);
+        setImagePreview(
+          result.data.image ?? null,
+        );
+      }
 
       setImageFile(null);
+      setSaveSuccess(true);
 
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-
-      if (imagePreview?.startsWith("blob:")) {
-        URL.revokeObjectURL(imagePreview);
-      }
-
-      setImagePreview(
-        data.user.image ?? null,
-      );
-
-      /*
-       * Keep the global auth user synchronized
-       * with the updated profile.
-       */
-      if (authUser) {
-        setUser({
-          ...authUser,
-          first_name:
-            data.user.first_name,
-          last_name:
-            data.user.last_name,
-          image:
-            data.user.image ?? "",
-        });
-      }
-
-      toast.success(
-        "تم تحديث الملف الشخصي بنجاح.",
-      );
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "حدث خطأ أثناء حفظ التغييرات.",
+      reset(values);
+    } catch {
+      setError(
+        "حدث خطأ غير متوقع أثناء تحديث الملف الشخصي.",
       );
     } finally {
       setIsSaving(false);
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex min-h-100 items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
-      </div>
+  function handleReset() {
+    reset(defaultValues);
+
+    setImageFile(null);
+    setImagePreview(
+      profile?.image ?? null,
     );
+    setError(null);
+    setSaveSuccess(false);
   }
 
   if (!profile) {
     return (
       <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
         <Card>
-          <CardContent className="flex min-h-[300px] items-center justify-center">
-            <p className="text-sm text-muted-foreground">
-              تعذر تحميل الملف الشخصي.
+          <CardContent className="flex min-h-48 items-center justify-center">
+            <p className="text-sm text-destructive">
+              {error ??
+                "تعذر تحميل الملف الشخصي."}
             </p>
           </CardContent>
         </Card>
@@ -359,373 +470,495 @@ export function ProfileClient() {
     );
   }
 
-  const fullName =
-    `${form.first_name} ${form.last_name}`.trim() ||
-    "المستخدم";
-
   const initials =
-    `${form.first_name.charAt(0)}${form.last_name.charAt(0)}`
-      .trim()
-      .toUpperCase() || "U";
+    `${profile.first_name?.[0] ?? ""}${profile.last_name?.[0] ?? ""}` ||
+    "U";
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 pb-12 pt-4 sm:px-6 lg:px-8">
-      {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">
+    <div
+      dir="rtl"
+      className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8"
+    >
+      {/* Page Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight">
           الملف الشخصي
         </h1>
 
         <p className="mt-1 text-sm text-muted-foreground">
-          إدارة معلوماتك الشخصية وبياناتك التعليمية
+          إدارة بياناتك الشخصية ومعلومات حسابك.
         </p>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        encType="multipart/form-data"
-      >
-        <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-          {/* Profile summary */}
-          <Card className="h-fit overflow-hidden">
-            <CardContent className="flex flex-col items-center px-6 py-8 text-center">
-              <div className="relative">
-                <Avatar className="size-28 border-4 border-background shadow-md ring-1 ring-border">
-                  <AvatarImage
-                    src={
-                      imagePreview ?? undefined
-                    }
-                    alt={fullName}
-                    className="object-cover"
-                  />
+      {/* Profile Header */}
+      <Card className="mb-6 overflow-hidden">
+        <div className="h-28 bg-muted/60" />
 
-                  <AvatarFallback className="bg-primary/10 text-2xl font-semibold text-primary">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    fileInputRef.current?.click()
-                  }
-                  className="absolute bottom-0 left-0 flex size-9 items-center justify-center rounded-full border border-border bg-background shadow-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label="تغيير الصورة"
-                >
-                  <Camera className="size-4" />
-                </button>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleImageChange}
+        <CardContent className="-mt-12 flex flex-col gap-5 px-6 pb-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex items-end gap-4">
+            <div className="relative shrink-0">
+              <Avatar className="size-24 border-4 border-background shadow-sm">
+                <AvatarImage
+                  src={imagePreview ?? undefined}
+                  alt={`${profile.first_name} ${profile.last_name}`}
                 />
-              </div>
 
-              <h2 className="mt-4 text-lg font-semibold">
-                {fullName}
+                <AvatarFallback className="text-xl font-medium">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+
+              <button
+                type="button"
+                onClick={() =>
+                  fileInputRef.current?.click()
+                }
+                className="absolute bottom-0 left-0 flex size-8 items-center justify-center rounded-full border border-border bg-background shadow-sm transition-colors hover:bg-muted"
+                aria-label="تغيير الصورة الشخصية"
+              >
+                <Camera className="size-4" />
+              </button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageChange}
+              />
+            </div>
+
+            <div className="pb-1">
+              <h2 className="text-lg font-semibold">
+                {profile.first_name}{" "}
+                {profile.last_name}
               </h2>
 
-              <p className="mt-1 max-w-full truncate text-sm text-muted-foreground">
-                {authUser?.email}
-              </p>
+              <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                <Mail className="size-4 shrink-0" />
 
-              <div className="mt-5 w-full rounded-lg bg-muted/50 px-4 py-3 text-right">
-                <p className="text-xs text-muted-foreground">
-                  نوع الحساب
-                </p>
-
-                <p className="mt-1 text-sm font-medium">
-                  طالب
-                </p>
+                <span dir="ltr">
+                  {profile.email}
+                </span>
               </div>
-
-              <p className="mt-4 text-xs leading-5 text-muted-foreground">
-                اضغط على أيقونة الكاميرا لتغيير
-                صورة الملف الشخصي. الحد الأقصى
-                لحجم الصورة 5MB.
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Form */}
-          <div className="space-y-6">
-            {/* Personal information */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <UserRound className="size-4" />
-                  </div>
-
-                  <div>
-                    <h2 className="font-semibold">
-                      المعلومات الشخصية
-                    </h2>
-
-                    <p className="text-sm text-muted-foreground">
-                      معلوماتك الأساسية
-                    </p>
-                  </div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-5">
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="first_name">
-                      الاسم الأول
-                    </Label>
-
-                    <Input
-                      id="first_name"
-                      value={form.first_name}
-                      onChange={(event) =>
-                        updateField(
-                          "first_name",
-                          event.target.value,
-                        )
-                      }
-                      placeholder="الاسم الأول"
-                      autoComplete="given-name"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="last_name">
-                      اسم العائلة
-                    </Label>
-
-                    <Input
-                      id="last_name"
-                      value={form.last_name}
-                      onChange={(event) =>
-                        updateField(
-                          "last_name",
-                          event.target.value,
-                        )
-                      }
-                      placeholder="اسم العائلة"
-                      autoComplete="family-name"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">
-                    البريد الإلكتروني
-                  </Label>
-
-                  <div className="relative">
-                    <Mail className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-
-                    <Input
-                      id="email"
-                      value={authUser?.email ?? ""}
-                      disabled
-                      className="pr-10"
-                    />
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    لا يمكن تغيير البريد الإلكتروني
-                    من هنا.
-                  </p>
-                </div>
-
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">
-                      رقم الهاتف
-                    </Label>
-
-                    <div className="relative">
-                      <Phone className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-
-                      <Input
-                        id="phone"
-                        type="tel"
-                        dir="ltr"
-                        value={form.phone}
-                        onChange={(event) =>
-                          updateField(
-                            "phone",
-                            event.target.value,
-                          )
-                        }
-                        placeholder="01xxxxxxxxx"
-                        className="pr-10"
-                        autoComplete="tel"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="date_of_birth">
-                      تاريخ الميلاد
-                    </Label>
-
-                    <Input
-                      id="date_of_birth"
-                      type="date"
-                      value={form.date_of_birth}
-                      onChange={(event) =>
-                        updateField(
-                          "date_of_birth",
-                          event.target.value,
-                        )
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="city">
-                      المدينة
-                    </Label>
-
-                    <div className="relative">
-                      <MapPin className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-
-                      <Input
-                        id="city"
-                        value={form.city}
-                        onChange={(event) =>
-                          updateField(
-                            "city",
-                            event.target.value,
-                          )
-                        }
-                        placeholder="المدينة"
-                        className="pr-10"
-                        autoComplete="address-level2"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="country">
-                      الدولة
-                    </Label>
-
-                    <Input
-                      id="country"
-                      value={form.country}
-                      onChange={(event) =>
-                        updateField(
-                          "country",
-                          event.target.value,
-                        )
-                      }
-                      placeholder="الدولة"
-                      autoComplete="country-name"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Education */}
-            <Card>
-              <CardHeader>
-                <div>
-                  <h2 className="font-semibold">
-                    المعلومات التعليمية
-                  </h2>
-
-                  <p className="text-sm text-muted-foreground">
-                    معلوماتك الدراسية
-                  </p>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-5">
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="school">
-                      المدرسة
-                    </Label>
-
-                    <Input
-                      id="school"
-                      value={form.school}
-                      onChange={(event) =>
-                        updateField(
-                          "school",
-                          event.target.value,
-                        )
-                      }
-                      placeholder="اسم المدرسة"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="grade_level">
-                      الصف الدراسي
-                    </Label>
-
-                    <Input
-                      id="grade_level"
-                      value={form.grade_level}
-                      onChange={(event) =>
-                        updateField(
-                          "grade_level",
-                          event.target.value,
-                        )
-                      }
-                      placeholder="مثال: الصف الثالث الثانوي"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="bio">
-                    نبذة عني
-                  </Label>
-
-                  <Textarea
-                    id="bio"
-                    value={form.bio}
-                    onChange={(event) =>
-                      updateField(
-                        "bio",
-                        event.target.value,
-                      )
-                    }
-                    placeholder="اكتب نبذة قصيرة عنك..."
-                    rows={5}
-                    className="resize-none"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Save */}
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                disabled={isSaving}
-                className="min-w-36"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    جاري الحفظ...
-                  </>
-                ) : (
-                  <>
-                    <Save className="size-4" />
-                    حفظ التغييرات
-                  </>
-                )}
-              </Button>
             </div>
           </div>
+
+          <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-medium">
+            {profile.role === "STUDENT"
+              ? "طالب"
+              : profile.role === "TEACHER"
+                ? "معلم"
+                : "مدير"}
+          </span>
+        </CardContent>
+      </Card>
+
+      {/* Error */}
+      {error && (
+        <div
+          role="alert"
+          className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+        >
+          {error}
+        </div>
+      )}
+
+      {/* Success */}
+      {saveSuccess && (
+        <div
+          role="status"
+          className="mb-6 flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400"
+        >
+          <Check className="size-4" />
+
+          <span>
+            تم تحديث الملف الشخصي بنجاح.
+          </span>
+        </div>
+      )}
+
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="space-y-6"
+      >
+        {/* Basic Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              المعلومات الأساسية
+            </CardTitle>
+
+            <CardDescription>
+              البيانات الأساسية الخاصة بحسابك.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <FormField
+                label="الاسم الأول"
+                htmlFor="first_name"
+                error={
+                  errors.first_name?.message
+                }
+              >
+                <Input
+                  id="first_name"
+                  placeholder="أدخل الاسم الأول"
+                  {...register("first_name")}
+                  aria-invalid={
+                    !!errors.first_name
+                  }
+                />
+              </FormField>
+
+              <FormField
+                label="اسم العائلة"
+                htmlFor="last_name"
+                error={
+                  errors.last_name?.message
+                }
+              >
+                <Input
+                  id="last_name"
+                  placeholder="أدخل اسم العائلة"
+                  {...register("last_name")}
+                  aria-invalid={
+                    !!errors.last_name
+                  }
+                />
+              </FormField>
+
+              <FormField
+                label="البريد الإلكتروني"
+                htmlFor="email"
+              >
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+
+                  <Input
+                    id="email"
+                    value={profile.email}
+                    readOnly
+                    className="pr-9"
+                    dir="ltr"
+                  />
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  لا يمكن تغيير البريد الإلكتروني من هنا.
+                </p>
+              </FormField>
+
+              <FormField
+                label="رقم الهاتف"
+                htmlFor="phone"
+                error={
+                  errors.phone?.message
+                }
+              >
+                <Input
+                  id="phone"
+                  placeholder="أدخل رقم الهاتف"
+                  {...register("phone")}
+                  aria-invalid={
+                    !!errors.phone
+                  }
+                  dir="ltr"
+                />
+              </FormField>
+
+              <FormField
+                label="المدينة"
+                htmlFor="city"
+                error={
+                  errors.city?.message
+                }
+              >
+                <Input
+                  id="city"
+                  placeholder="أدخل المدينة"
+                  {...register("city")}
+                  aria-invalid={
+                    !!errors.city
+                  }
+                />
+              </FormField>
+
+              <FormField
+                label="الدولة"
+                htmlFor="country"
+                error={
+                  errors.country?.message
+                }
+              >
+                <Input
+                  id="country"
+                  placeholder="أدخل الدولة"
+                  {...register("country")}
+                  aria-invalid={
+                    !!errors.country
+                  }
+                />
+              </FormField>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Student Information */}
+        {isStudent && (
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                المعلومات الدراسية
+              </CardTitle>
+
+              <CardDescription>
+                المعلومات الخاصة بدراستك.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <FormField
+                  label="المدرسة"
+                  htmlFor="school"
+                  error={
+                    errors.school?.message
+                  }
+                >
+                  <Input
+                    id="school"
+                    placeholder="اسم المدرسة"
+                    {...register("school")}
+                    aria-invalid={
+                      !!errors.school
+                    }
+                  />
+                </FormField>
+
+                <FormField
+                  label="الصف الدراسي"
+                  htmlFor="grade_level"
+                  error={
+                    errors.grade_level?.message
+                  }
+                >
+                  <Input
+                    id="grade_level"
+                    placeholder="مثال: الصف الثالث الإعدادي"
+                    {...register(
+                      "grade_level",
+                    )}
+                    aria-invalid={
+                      !!errors.grade_level
+                    }
+                  />
+                </FormField>
+
+                <FormField
+                  label="تاريخ الميلاد"
+                  htmlFor="date_of_birth"
+                  error={
+                    errors.date_of_birth?.message
+                  }
+                >
+                  <Input
+                    id="date_of_birth"
+                    type="date"
+                    {...register(
+                      "date_of_birth",
+                    )}
+                    aria-invalid={
+                      !!errors.date_of_birth
+                    }
+                    dir="ltr"
+                  />
+                </FormField>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Teacher Information */}
+        {isTeacher && (
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                المعلومات المهنية
+              </CardTitle>
+
+              <CardDescription>
+                المعلومات المهنية الخاصة بك.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <FormField
+                  label="التخصص"
+                  htmlFor="specialization"
+                  error={
+                    errors.specialization
+                      ?.message
+                  }
+                >
+                  <Input
+                    id="specialization"
+                    placeholder="أدخل التخصص"
+                    {...register(
+                      "specialization",
+                    )}
+                    aria-invalid={
+                      !!errors.specialization
+                    }
+                  />
+                </FormField>
+
+                <FormField
+                  label="المؤهل"
+                  htmlFor="qualification"
+                  error={
+                    errors.qualification
+                      ?.message
+                  }
+                >
+                  <Input
+                    id="qualification"
+                    placeholder="أدخل المؤهل"
+                    {...register(
+                      "qualification",
+                    )}
+                    aria-invalid={
+                      !!errors.qualification
+                    }
+                  />
+                </FormField>
+
+                <FormField
+                  label="سنوات الخبرة"
+                  htmlFor="years_of_experience"
+                  error={
+                    errors.years_of_experience
+                      ?.message
+                  }
+                >
+                  <Input
+                    id="years_of_experience"
+                    type="number"
+                    min={0}
+                    max={60}
+                    placeholder="0"
+                    {...register(
+                      "years_of_experience",
+                    )}
+                    aria-invalid={
+                      !!errors.years_of_experience
+                    }
+                    dir="ltr"
+                  />
+                </FormField>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Bio */}
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              نبذة شخصية
+            </CardTitle>
+
+            <CardDescription>
+              اكتب نبذة مختصرة عنك.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <FormField
+              label="النبذة"
+              htmlFor="bio"
+              error={errors.bio?.message}
+            >
+              <Textarea
+                id="bio"
+                placeholder="اكتب نبذة مختصرة عنك..."
+                className="min-h-32 resize-y"
+                {...register("bio")}
+                aria-invalid={!!errors.bio}
+              />
+            </FormField>
+          </CardContent>
+        </Card>
+
+        {/* Actions */}
+        <div className="flex flex-col-reverse gap-3 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleReset}
+            disabled={
+              isSaving ||
+              (!isDirty && !imageFile)
+            }
+          >
+            إلغاء التغييرات
+          </Button>
+
+          <Button
+            type="submit"
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                جارٍ الحفظ...
+              </>
+            ) : (
+              <>
+                <Save className="size-4" />
+                حفظ التغييرات
+              </>
+            )}
+          </Button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Form Field                                                                 */
+/* -------------------------------------------------------------------------- */
+
+type FormFieldProps = {
+  label: string;
+  htmlFor: string;
+  error?: string;
+  children: React.ReactNode;
+};
+
+function FormField({
+  label,
+  htmlFor,
+  error,
+  children,
+}: FormFieldProps) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={htmlFor}>
+        {label}
+      </Label>
+
+      {children}
+
+      {error && (
+        <p className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

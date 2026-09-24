@@ -8,7 +8,6 @@ import { Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { forgotPasswordAction } from "@/actions/auth/forgot-password";
-
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -17,18 +16,24 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { TurnstileWidget } from "@/components/security/turnstile-widget";
+import { useTurnstile } from "@/hooks/use-turnstile";
 
 const forgotPasswordSchema = z.object({
-  email: z
-    .string()
-    .min(1, "البريد الإلكتروني مطلوب")
-    .email("أدخل بريدًا إلكترونيًا صحيحًا"),
+  email: z.email("أدخل بريدًا إلكترونيًا صحيحًا"),
 });
 
 type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
 
-export function ForgotPasswordForm() {
+type ForgotPasswordEmailProps = {
+  onSuccess: (email: string) => void;
+};
+
+export function ForgotPasswordEmail({
+  onSuccess,
+}: ForgotPasswordEmailProps) {
   const [isPending, startTransition] = useTransition();
+  const turnstile = useTurnstile();
 
   const form = useForm<ForgotPasswordValues>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -38,42 +43,62 @@ export function ForgotPasswordForm() {
   });
 
   function onSubmit(values: ForgotPasswordValues) {
+    if (!turnstile.isVerified) {
+      toast.error("يرجى إكمال التحقق الأمني.");
+      return;
+    }
+
     startTransition(async () => {
       const formData = new FormData();
 
-      formData.set("email", values.email);
+      formData.set("email", values.email.trim());
+      formData.set("turnstile_token", turnstile.token);
 
       const result = await forgotPasswordAction(formData);
 
-      if (result.success) {
-        toast.success(
-          result.message ??
-            "إذا كان البريد الإلكتروني مسجلًا، فستصلك رسالة إعادة التعيين.",
+      if (!result.success) {
+        if (result.errors) {
+          for (const [field, messages] of Object.entries(
+            result.errors,
+          )) {
+            const message = messages[0];
+
+            if (!message) continue;
+
+            if (field === "email") {
+              form.setError("email", {
+                type: "server",
+                message,
+              });
+            }
+
+            if (field === "non_field_errors") {
+              form.setError("root", {
+                type: "server",
+                message,
+              });
+            }
+          }
+        }
+
+        toast.error(
+          result.errors?.non_field_errors?.[0] ??
+            result.errors?.email?.[0] ??
+            result.message ??
+            "حدث خطأ أثناء تنفيذ الطلب.",
         );
 
-        form.reset();
         return;
       }
 
-      if (result.errors) {
-        for (const [field, messages] of Object.entries(result.errors)) {
-          if (field === "email" || field === "non_field_errors") {
-            form.setError(
-              field === "email" ? "email" : "root",
-              {
-                type: "server",
-                message: messages[0],
-              },
-            );
-          }
-        }
-      }
-
-      toast.error(
-        result.errors?.non_field_errors?.[0] ??
-          result.errors?.email?.[0] ??
-          "حدث خطأ أثناء تنفيذ الطلب.",
+      toast.success(
+        result.message ??
+          "تم إرسال رمز إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.",
       );
+
+      turnstile.reset();
+
+      onSuccess(values.email.trim());
     });
   }
 
@@ -119,16 +144,22 @@ export function ForgotPasswordForm() {
       />
 
       {form.formState.errors.root?.message && (
-        <FieldError
-          errors={[form.formState.errors.root]}
-        />
+        <FieldError errors={[form.formState.errors.root]} />
       )}
+
+      <div className="flex justify-center">
+        <TurnstileWidget
+          onVerify={turnstile.setToken}
+          onError={turnstile.reset}
+          onExpire={turnstile.reset}
+        />
+      </div>
 
       <Button
         type="submit"
         size="lg"
-        className="w-full"
-        disabled={isPending}
+        className="w-full disabled:cursor-not-allowed"
+        disabled={isPending || !turnstile.isVerified}
       >
         {isPending ? (
           <>
@@ -136,7 +167,7 @@ export function ForgotPasswordForm() {
             جارٍ الإرسال...
           </>
         ) : (
-          "إرسال تعليمات إعادة التعيين"
+          "إرسال رمز التحقق"
         )}
       </Button>
     </form>

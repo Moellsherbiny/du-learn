@@ -16,6 +16,16 @@ export async function forgotPasswordAction(
     .trim()
     .toLowerCase();
 
+  const turnstileToken = String(formData.get("turnstile_token")?? "")
+
+  if (!turnstileToken){
+     return {
+      success: false,
+      errors: {
+        email: ["التحقق الأمني مطلوب"],
+      },
+    };
+  }
   if (!email) {
     return {
       success: false,
@@ -26,9 +36,9 @@ export async function forgotPasswordAction(
   }
 
   try {
-    await requestPasswordReset(email);
+    await requestPasswordReset(email,turnstileToken);
 
-    // رسالة عامة حتى لا نكشف إذا كان البريد مسجلاً أم لا.
+    
     return {
       success: true,
       message:

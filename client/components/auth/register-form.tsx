@@ -17,16 +17,17 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
+import { TurnstileWidget } from "../security/turnstile-widget";
 import { registerAction } from "@/actions/auth/register";
 import {
   registerSchema,
   type RegisterFormValues,
 } from "@/lib/validations/auth";
+import { useTurnstile } from "@/hooks/use-turnstile";
 
 export function RegisterForm() {
   const [isPending, startTransition] = useTransition();
-
+  const turnstile = useTurnstile();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -48,6 +49,10 @@ export function RegisterForm() {
   });
   const password = watch("password1");
   const onSubmit = (values: RegisterFormValues) => {
+      if (!turnstile.isVerified) {
+    toast.error("يرجى إكمال التحقق الأمني.");
+    return;
+  }
     const formData = new FormData();
 
     formData.append("first_name", values.first_name);
@@ -55,6 +60,7 @@ export function RegisterForm() {
     formData.append("email", values.email);
     formData.append("password1", values.password1);
     formData.append("password2", values.password2);
+    formData.append("turnstile_token", turnstile.token);
 
     startTransition(async () => {
       const result = await registerAction(formData);
@@ -262,8 +268,14 @@ export function RegisterForm() {
               </p>
             )}
           </div>
-
-          <Button type="submit" className="w-full" disabled={isPending}>
+          <div className="w-full flex justify-center">
+            <TurnstileWidget
+              onVerify={turnstile.setToken}
+              onError={turnstile.reset}
+              onExpire={turnstile.reset}
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={isPending || !turnstile.isVerified}>
             {isPending ? "جاري إنشاء الحساب..." : "إنشاء الحساب"}
           </Button>
         </form>

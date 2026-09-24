@@ -1,9 +1,5 @@
-import React from 'react'
+import { MyCoursesClient } from "@/components/learn/courses/my-courses-client";
 
-function page() {
-  return (
-    <div>page</div>
-  )
+export default function MyCoursesPage() {
+  return <MyCoursesClient />;
 }
-
-export default page

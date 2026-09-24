@@ -1,3 +1,4 @@
+
 from django.conf import settings
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
@@ -15,6 +16,10 @@ class CourseProgress(models.Model):
         "courses.Course",
         on_delete=models.CASCADE,
         related_name="progress_records",
+    )
+
+    completed = models.BooleanField(
+        default=False,
     )
 
     completed_lessons = models.PositiveIntegerField(
@@ -85,4 +90,58 @@ class CourseProgress(models.Model):
             f"{self.student.email} - "
             f"{self.course.title} - "
             f"{self.progress_percentage}%"
+        )
+
+
+class LessonProgress(models.Model):
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="lesson_progress",
+        limit_choices_to={"role": "STUDENT"},
+    )
+
+    lesson = models.ForeignKey(
+        "lessons.Lesson",
+        on_delete=models.CASCADE,
+        related_name="student_progress",
+    )
+
+    completed = models.BooleanField(
+        default=False,
+    )
+
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["lesson__section__order", "lesson__order", "lesson__id"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["student", "lesson"],
+                name="unique_student_lesson_progress",
+            ),
+        ]
+
+        indexes = [
+            models.Index(
+                fields=["student", "lesson"],
+            ),
+            models.Index(
+                fields=["student", "completed"],
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.student.email} - "
+            f"{self.lesson.title} - "
+            f"{'Completed' if self.completed else 'In Progress'}"
         )

@@ -34,6 +34,7 @@ export async function registerAction(
     formData.get("password2") ?? "",
   );
 
+  const turnstileToken = String(formData.get("turnstile_token") ?? "")
   if (!firstName) {
     return {
       success: false,
@@ -54,6 +55,15 @@ export async function registerAction(
     };
   }
 
+  if (!turnstileToken)
+    return {
+    success:false,
+    message:"التحقق الأمني مطلوب",
+    errors:
+    {
+      turnstile_token:["التحقق الأمني مطلوب"]
+    }
+  }
   try {
     await register({
       first_name: firstName,
@@ -61,6 +71,7 @@ export async function registerAction(
       email,
       password1,
       password2,
+      turnstile_token: turnstileToken
     });
 
     return {

@@ -1,4 +1,7 @@
+
 "use client";
+
+import { usePathname } from "next/navigation";
 
 import {
   Breadcrumb,
@@ -9,14 +12,20 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 
-import { usePathname } from "next/navigation";
-
 const breadcrumbLabels: Record<string, string> = {
   "/learn": "الرئيسية",
   "/learn/courses": "المقررات",
   "/learn/progress": "التقدم",
   "/learn/achievements": "الإنجازات",
+  "/learn/profile": "الملف الشخصي",
+  "/learn/settings": "الإعدادات",
 };
+
+function formatSegment(segment: string) {
+  return decodeURIComponent(segment)
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
 export function LearnBreadcrumbs() {
   const pathname = usePathname();
@@ -33,12 +42,12 @@ export function LearnBreadcrumbs() {
       href,
       label:
         breadcrumbLabels[href] ??
-        segments[index],
+        formatSegment(segments[index]),
     };
   });
 
   return (
-    <Breadcrumb>
+    <Breadcrumb dir="rtl">
       <BreadcrumbList>
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
@@ -68,3 +77,4 @@ export function LearnBreadcrumbs() {
     </Breadcrumb>
   );
 }
+
